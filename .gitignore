@@ -9,3 +9,7 @@ logs/
 dist/
 build/
 *.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/

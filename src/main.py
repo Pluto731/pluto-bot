@@ -1,20 +1,28 @@
 import asyncio
 import logging
+import os
 import sys
+from pathlib import Path
 from config import Config
 from database import Database
 from bilibili.client import BilibiliClient
 from bilibili.parser import extract_bv, extract_email
+from asr import make_transcriber
 from generators.notes import NoteGenerator
 from senders.email import EmailSender
+
+LOG_FILE = os.getenv("LOG_FILE", "/app/logs/pluto.log")
+_handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+try:
+    Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
+    _handlers.append(logging.FileHandler(LOG_FILE, encoding="utf-8"))
+except (PermissionError, OSError):
+    pass
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/app/logs/pluto.log", encoding="utf-8"),
-    ],
+    handlers=_handlers,
 )
 log = logging.getLogger("pluto-bot")
 
@@ -32,7 +40,23 @@ class PlutoBot:
     def __init__(self):
         self.cfg = Config()
         self.db = Database()
-        self.bili = BilibiliClient(self.cfg.credential, self.cfg.bot_uid)
+        transcriber = None
+        if self.cfg.enable_asr_fallback and self.cfg.dashscope_api_key:
+            transcriber = make_transcriber(
+                backend=self.cfg.asr_backend,
+                api_key=self.cfg.dashscope_api_key,
+                model=self.cfg.dashscope_asr_model,
+            )
+            log.info(f"ASR backend enabled: {self.cfg.asr_backend}")
+        else:
+            log.info("ASR fallback disabled (no DASHSCOPE_API_KEY or ENABLE_ASR_FALLBACK=false)")
+        self.bili = BilibiliClient(
+            self.cfg.credential,
+            self.cfg.bot_uid,
+            db=self.db,
+            transcriber=transcriber,
+            subtitle_min_length=self.cfg.subtitle_min_length,
+        )
         self.gen = NoteGenerator(self.cfg.deepseek_api_key, self.cfg.deepseek_model)
         self.mailer = EmailSender(self.cfg)
         self._seen_dm: set[str] = set()

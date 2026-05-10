@@ -23,3 +23,9 @@ class Config:
         self.poll_dm_interval = int(os.getenv("POLL_DM_INTERVAL", "30"))
         self.poll_at_interval = int(os.getenv("POLL_AT_INTERVAL", "60"))
         self.daily_limit = int(os.getenv("DAILY_LIMIT_PER_USER", "10"))
+        # ASR 配置
+        self.enable_asr_fallback = os.getenv("ENABLE_ASR_FALLBACK", "true").lower() == "true"
+        self.subtitle_min_length = int(os.getenv("SUBTITLE_MIN_LENGTH", "500"))
+        self.asr_backend = os.getenv("ASR_BACKEND", "dashscope_realtime")
+        self.dashscope_api_key = os.getenv("DASHSCOPE_API_KEY", "")
+        self.dashscope_asr_model = os.getenv("DASHSCOPE_ASR_MODEL", "paraformer-realtime-v2")

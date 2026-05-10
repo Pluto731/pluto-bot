@@ -1,13 +1,16 @@
+import os
 import aiosqlite
 import logging
 from datetime import datetime, date
+from pathlib import Path
 
 log = logging.getLogger(__name__)
-DB_PATH = "/app/data/pluto.db"
+DB_PATH = os.getenv("DB_PATH", "/app/data/pluto.db")
 
 
 class Database:
     async def init(self):
+        Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -22,6 +25,14 @@ class Database:
                     day TEXT NOT NULL,
                     count INTEGER DEFAULT 0,
                     PRIMARY KEY (uid, day)
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS transcripts (
+                    bvid TEXT PRIMARY KEY,
+                    text TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 )
             """)
             await db.commit()
@@ -40,6 +51,23 @@ class Database:
             async with db.execute("SELECT email FROM users WHERE uid = ?", (uid,)) as cur:
                 row = await cur.fetchone()
                 return row[0] if row else None
+
+    async def get_transcript(self, bvid: str) -> tuple[str, str] | None:
+        """命中返回 (text, source)；未命中返回 None。source ∈ {'subtitle', 'asr'}"""
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT text, source FROM transcripts WHERE bvid = ?", (bvid,)
+            ) as cur:
+                row = await cur.fetchone()
+                return (row[0], row[1]) if row else None
+
+    async def save_transcript(self, bvid: str, text: str, source: str) -> None:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO transcripts (bvid, text, source, created_at) VALUES (?, ?, ?, ?)",
+                (bvid, text, source, datetime.utcnow().isoformat()),
+            )
+            await db.commit()
 
     async def check_and_increment_usage(self, uid: str, limit: int) -> bool:
         today = date.today().isoformat()
